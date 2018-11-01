@@ -238,6 +238,12 @@ A call was muted by the system or the user:
 
 **muted**: boolean
 
+### - didSpeakerChange
+
+A call was speaker by the system or the user:
+
+**isSpeaker**: boolean
+
 ## Usage
 
 ```javascript
@@ -268,6 +274,7 @@ class RNCallKitExample extends React.Component {
     RNCallKit.addEventListener('didActivateAudioSession', this.onRNCallKitDidActivateAudioSession);
     RNCallKit.addEventListener('didDisplayIncomingCall', this.onRNCallKitDidDisplayIncomingCall);
     RNCallKit.addEventListener('didPerformSetMutedCallAction', this.onRNCallKitDidPerformSetMutedCallAction);
+    RNCallKit.addEventListener('didSpeakerChange', this.onRNCallKitDidSpeakerChange);
   }
 
   onRNCallKitDidReceiveStartCallAction(data) {
@@ -317,6 +324,12 @@ class RNCallKitExample extends React.Component {
   onRNCallKitDidPerformSetMutedCallAction(muted) {
     /* You will get this event after the system or the user mutes a call
      * You can use it to toggle the mic on your custom call UI
+     */
+  }
+
+  onRNCallKitDidSpeakerChange(isSpeaker) {
+    /* You will get this event after the system or the user speaker change
+     * You can use it to toggle the speaker on your custom call UI
      */
   }
 

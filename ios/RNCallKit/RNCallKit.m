@@ -24,11 +24,13 @@ static NSString *const RNCallKitPerformEndCallAction = @"RNCallKitPerformEndCall
 static NSString *const RNCallKitDidActivateAudioSession = @"RNCallKitDidActivateAudioSession";
 static NSString *const RNCallKitDidDisplayIncomingCall = @"RNCallKitDidDisplayIncomingCall";
 static NSString *const RNCallKitDidPerformSetMutedCallAction = @"RNCallKitDidPerformSetMutedCallAction";
+static NSString *const RNCallKitDidSpeakerChange = @"RNCallKitDidSpeakerChange";
 
 @implementation RNCallKit
 {
     NSMutableDictionary *_settings;
     NSOperatingSystemVersion _version;
+    BOOL _isSpeaker;
     BOOL _isStartCallActionEventListenerAdded;
 }
 
@@ -42,9 +44,12 @@ RCT_EXPORT_MODULE()
 #endif
     if (self = [super init]) {
         [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(handleStartCallNotification:)
-                                                     name:RNCallKitHandleStartCallNotification
-                                                   object:nil];
+                                                selector:@selector(handleStartCallNotification:)
+                                                    name:RNCallKitHandleStartCallNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                selector:@selector(currentRouteChanged:)
+                                                    name:AVAudioSessionRouteChangeNotification object:nil];
+        _isSpeaker = NO;
         _isStartCallActionEventListenerAdded = NO;
     }
     return self;
@@ -67,7 +72,8 @@ RCT_EXPORT_MODULE()
              RNCallKitPerformEndCallAction,
              RNCallKitDidActivateAudioSession,
              RNCallKitDidDisplayIncomingCall,
-             RNCallKitDidPerformSetMutedCallAction
+             RNCallKitDidPerformSetMutedCallAction,
+             RNCallKitDidSpeakerChange
              ];
 }
 
@@ -100,8 +106,7 @@ RCT_REMAP_METHOD(checkSpeaker,
 #ifdef DEBUG
     NSLog(@"[RNCallKit][checkSpeaker]");
 #endif
-    NSString *output = [AVAudioSession sharedInstance].currentRoute.outputs.count > 0 ? [AVAudioSession sharedInstance].currentRoute.outputs[0].portType : nil;
-    resolve(@([output isEqualToString:@"Speaker"]));
+    resolve(@([self checkSpeakerOn]));
 }
 
 #pragma mark - CXCallController call actions
@@ -120,12 +125,11 @@ RCT_EXPORT_METHOD(displayIncomingCall:(NSString *)uuidString
     NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:uuidString];
     CXCallUpdate *callUpdate = [[CXCallUpdate alloc] init];
     callUpdate.remoteHandle = [[CXHandle alloc] initWithType:_handleType value:handle];
-    callUpdate.supportsDTMF = YES;
-    // TODO: Holding
-    callUpdate.supportsHolding = NO;
+    callUpdate.supportsDTMF = NO;
+    callUpdate.hasVideo = NO;
     callUpdate.supportsGrouping = NO;
     callUpdate.supportsUngrouping = NO;
-    callUpdate.hasVideo = hasVideo;
+    callUpdate.supportsHolding = NO;
     callUpdate.localizedCallerName = localizedCallerName;
 
     [self.callKitProvider reportNewIncomingCallWithUUID:uuid update:callUpdate completion:^(NSError * _Nullable error) {
@@ -221,6 +225,12 @@ RCT_EXPORT_METHOD(setMutedCall:(NSString *)uuidString muted:(BOOL)muted)
     [self requestTransaction:transaction];
 }
 
+- (BOOL)checkSpeakerOn
+{
+    NSString *output = [AVAudioSession sharedInstance].currentRoute.outputs.count > 0 ? [AVAudioSession sharedInstance].currentRoute.outputs[0].portType : nil;
+    return [output isEqualToString:@"Speaker"];
+}
+
 - (void)requestTransaction:(CXTransaction *)transaction
 {
 #ifdef DEBUG
@@ -240,11 +250,11 @@ RCT_EXPORT_METHOD(setMutedCall:(NSString *)uuidString muted:(BOOL)muted)
                 CXStartCallAction *startCallAction = [transaction.actions firstObject];
                 CXCallUpdate *callUpdate = [[CXCallUpdate alloc] init];
                 callUpdate.remoteHandle = startCallAction.handle;
-                callUpdate.supportsDTMF = YES;
-                callUpdate.supportsHolding = NO;
+                callUpdate.supportsDTMF = NO;
+                callUpdate.hasVideo = NO;
                 callUpdate.supportsGrouping = NO;
                 callUpdate.supportsUngrouping = NO;
-                callUpdate.hasVideo = NO;
+                callUpdate.supportsHolding = NO;
                 [self.callKitProvider reportCallWithUUID:startCallAction.callUUID updated:callUpdate];
             }
         }
@@ -289,7 +299,7 @@ RCT_EXPORT_METHOD(setMutedCall:(NSString *)uuidString muted:(BOOL)muted)
     NSLog(@"[RNCallKit][getProviderConfiguration]");
 #endif
     CXProviderConfiguration *providerConfiguration = [[CXProviderConfiguration alloc] initWithLocalizedName:_settings[@"appName"]];
-    providerConfiguration.supportsVideo = YES;
+    providerConfiguration.supportsVideo = NO;
     providerConfiguration.maximumCallGroups = 1;
     providerConfiguration.maximumCallsPerCallGroup = 1;
     providerConfiguration.supportedHandleTypes = [NSSet setWithObjects:[NSNumber numberWithInteger:CXHandleTypePhoneNumber], [NSNumber numberWithInteger:CXHandleTypeEmailAddress], [NSNumber numberWithInteger:CXHandleTypeGeneric], nil];
@@ -402,6 +412,15 @@ continueUserActivity:(NSUserActivity *)userActivity
     });
 }
 
+- (void)currentRouteChanged:(NSNotification *)notification
+{
+    BOOL current_speaker = [self checkSpeakerOn];
+    if(_isSpeaker != current_speaker) {
+        _isSpeaker = current_speaker;
+         [self sendEventWithName:RNCallKitDidSpeakerChange body:@{ @"isSpeaker":  @(current_speaker) }];
+    }
+}
+
 #pragma mark - CXProviderDelegate
 
 - (void)providerDidReset:(CXProvider *)provider{
@@ -430,6 +449,7 @@ continueUserActivity:(NSUserActivity *)userActivity
     if (![self lessThanIos10_2]) {
         [self configureAudioSession];
     }
+    _isSpeaker = [self checkSpeakerOn];
     NSString *callUUID = [self containsLowerCaseLetter:action.callUUID.UUIDString] ? action.callUUID.UUIDString : [action.callUUID.UUIDString lowercaseString];
     [self sendEventWithName:RNCallKitPerformAnswerCallAction body:@{ @"callUUID": callUUID }];
     [action fulfill];

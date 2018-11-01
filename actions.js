@@ -1,4 +1,4 @@
-import { 
+import {
     NativeModules,
     NativeEventEmitter,
 } from 'react-native';
@@ -12,11 +12,12 @@ const RNCallKitPerformEndCallAction = 'RNCallKitPerformEndCallAction';
 const RNCallKitDidActivateAudioSession = 'RNCallKitDidActivateAudioSession';
 const RNCallKitDidDisplayIncomingCall = 'RNCallKitDidDisplayIncomingCall';
 const RNCallKitDidPerformSetMutedCallAction = 'RNCallKitDidPerformSetMutedCallAction';
+const RNCallKitDidSpeakerChange = 'RNCallKitDidSpeakerChange';
 
 didReceiveStartCallAction = handler => {
     const listener = _RNCallKitEmitter.addListener(
         RNCallKitDidReceiveStartCallAction,
-        (data) => { handler(data);}
+        (data) => { handler(data); }
     );
     _RNCallKit._startCallActionEventListenerAdded();
     return listener;
@@ -25,7 +26,7 @@ didReceiveStartCallAction = handler => {
 answerCall = handler => (
     _RNCallKitEmitter.addListener(
         RNCallKitPerformAnswerCallAction,
-        (data) => { handler(data);}
+        (data) => { handler(data); }
     )
 )
 
@@ -57,12 +58,20 @@ didPerformSetMutedCallAction = handler => (
     )
 )
 
-export const listeners = { 
+didSpeakerChange = handler => (
+    _RNCallKitEmitter.addListener(
+        RNCallKitDidSpeakerChange,
+        (data) => { handler(data.isSpeaker); }
+    )
+)
+
+export const listeners = {
     didReceiveStartCallAction,
     answerCall,
     endCall,
     didActivateAudioSession,
     didDisplayIncomingCall,
     didPerformSetMutedCallAction,
+    didSpeakerChange
 };
 
